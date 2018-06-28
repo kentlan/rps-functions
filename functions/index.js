@@ -7,53 +7,43 @@ const gamesRef = admin.database().ref('games')
 const queueRef = admin.database().ref('queue')
 const userListRef = admin.database().ref('userList')
 
-const removeFromQueue = (currentQueue, users) => {
-  const newQueue = currentQueue.filter(id => console.log('nu i pizda', !(id === users[0] || id === users[1])) || !(id === users[0] || id === users[1]))
-  queueRef.set(newQueue)
-}
-
-const createGame = (currentGames, users, newGameId) => {
-  const newGames = Object.assign(currentGames || {}, {
-    [newGameId]: {
+const createGame = (users, userQueueKeys) => {
+  const newGameData = {
       score: {
         [users[0]]: 0,
         [users[1]]: 0,
-      },
-    },
-  })
+      }
+    }
 
-  gamesRef.set(newGames)
+  const newGameKey = gamesRef.push(newGameData).key
+  
+  queueRef.child(userQueueKeys[0]).remove()
+  queueRef.child(userQueueKeys[1]).remove()
+
+  updateUserList(users, newGameKey)
 }
 
-const updateUserList = (currentUserList, users, newGameId) => {
-  const newUserList = Object.assign(currentUserList || {}, {
-    [users[0]]: newGameId,
-    [users[1]]: newGameId,
-  })
+const updateUserList = (users, newGameKey) => {
+  const newUserList = {
+    [users[0]]: newGameKey,
+    [users[1]]: newGameKey,
+  }
  
-  userListRef.set(newUserList)
+  userListRef.update(newUserList)
 }
 
-const setupGame = (users) => {
-  const newGameId = gamesRef.push().key
-
-  gamesRef
+const setupGame = (users, userQueueKeys) => gamesRef
     .once('value')
-    .then(games => createGame(games ? games.val() : {}, users, newGameId))
+    .then(games => createGame(users, userQueueKeys))
     .catch(console.log)
-
-  queueRef
-    .once('value')
-    .then(queue => removeFromQueue(queue.val(), users))
-    .catch(console.log)
-
-  userListRef
-    .once('value')
-    .then(userList => updateUserList(userList.val(), users, newGameId))
-    .catch(console.log)
-}
 
 exports.getDatabase = functions.database.ref('queue').onUpdate((change) => {
   const currentQueue = change.after.val()
-  currentQueue.length > 1 && setupGame([currentQueue[0], currentQueue[1]])
+  const queueKeys = Object.keys(currentQueue || {})
+
+  return queueKeys.length > 1 &&
+    setupGame(
+      [currentQueue[queueKeys[0]], currentQueue[queueKeys[1]]],
+      [queueKeys[0], queueKeys[1]]
+    )
 })
